@@ -55,10 +55,16 @@ char frequency[100] = {0};
 char V_high[100] = {0};
 char V_low[100] = {0};
 uint32_t State = 0;
-int  f = 0;
-int  Vh = 0;
-int  Vl = 0;
-int sinewave = 0;
+int16_t inputchar = 0;
+float  f = 1;
+float  Vh = 0;
+float  Vl = 0;
+int Duty = 0;
+int Check = 0;
+int16_t sinewave = 0;
+int16_t sawtooth = 0;
+int16_t square = 0;
+int Check_Slope = 0;
 enum _State
 {
 	State_Start = 0,
@@ -69,14 +75,7 @@ enum _State
 	State_Menu1_Print = 30,
 	State_Menu1_WaitInput,
 	State_Menu2_Print = 40,
-	State_Menu2_WaitInput,
-
-	State_Menu0_1_Print = 50,
-	State_Menu0_1_WaitInput,
-	State_Menu0_2_Print = 60,
-	State_Menu0_2_WaitInput,
-	State_Menu0_3_Print = 70,
-	State_Menu0_3_WaitInput
+	State_Menu2_WaitInput
 };
 
 /* USER CODE BEGIN PV */
@@ -152,19 +151,10 @@ int main(void)
   /* USER CODE BEGIN WHILE */
 	while (1)
 	{
-		int16_t inputchar = UARTRecieveIT();
+		HAL_UART_Receive_IT(&huart2,(uint8_t*)RxDataBuffer, 32);
+		inputchar = UARTRecieveIT();
 		static uint64_t timestamp = 0;
-		if (micros() - timestamp > 100)
-		{
-			timestamp = micros();
-			dataOut++;
-			dataOut %= 4096;
-			if (hspi3.State == HAL_SPI_STATE_READY
-					&& HAL_GPIO_ReadPin(SPI_SS_GPIO_Port, SPI_SS_Pin) == GPIO_PIN_SET)
-			{
-				MCP4922SetOutput(DACConfig, dataOut);
-			}
-		}
+
 		switch (State)
 		{
 			case State_Start:
@@ -172,10 +162,7 @@ int main(void)
 				break;
 			case State_Mainmenu_Print:
 			{
-				char temp[] = "***** Main Menu *****\r\n "
-						"0: Sawtooth wave\r\n "
-						"1: Sine wave\r\n "
-						"2: Square wave\r\n\r\n";
+				char temp[] = "***** Main Menu *****\r\n ""0: Sawtooth wave\r\n ""1: Sine wave\r\n ""2: Square wave\r\n\r\n";
 				 HAL_UART_Transmit(&huart2, (uint8_t*)temp, strlen(temp), 1000);
 				 State = State_Mainmenu_WaitInput;
 				 break;
@@ -187,17 +174,17 @@ int main(void)
 					{
 						break;
 					}
-					case '0':  // press 0
+					case '0':  // Sawtooth wave
 					{
 						State = State_Menu0_Print;
 						break;
 					}
-					case '1':  // press 1
+					case '1':  // Sine wave
 					{
 						State = State_Menu1_Print;
 						break;
 					}
-					case '2':  // press 2
+					case '2':  // Square wave
 					{
 						State = State_Menu2_Print;
 						break;
@@ -213,11 +200,14 @@ int main(void)
 				break;
 			case State_Menu0_Print:
 			{
-				char temp[] = "***** Mode 0: Sawtooth *****\r\n "
-						"1: frequency\r\n "
-						"2: V high\r\n "
-						"3: V low\r\n "
-						"4: Slope Up/Slope Down\r\n "
+				char temp[] = "***** Mode 0: Sawtooth wave*****\r\n "
+						"1: frequency +0.1 Hz\r\n "
+						"2: frequency -0.1 Hz\r\n "
+						"3: V high +0.1V\r\n "
+						"4: V low -0.1V\r\n "
+						"5: V high +0.1V\r\n "
+						"6: V low -0.1V\r\n "
+						"7: Slope Up/Slope Down\r\n "
 						"x: back\r\n \r\n";
 				HAL_UART_Transmit(&huart2, (uint8_t*)temp, strlen(temp), 1000);
 				State = State_Menu0_WaitInput;
@@ -230,201 +220,93 @@ int main(void)
 					{
 						break;
 					}
-					case '1':  // frequency
+					case '1':  // +0.1Hz
 					{
-						char temp[] = "***** Mode 0: Sawtooth_frequency *****\r\n "
-						"1: +0.1Hz\r\n ""2: -0.1Hz\r\n ""3: +1Hz\r\n ""4: -1Hz\r\n ""x: back\r\n \r\n";
-						HAL_UART_Transmit(&huart2, (uint8_t*)temp, strlen(temp), 1000);
-						switch(inputchar)
+						f += 0.1;
+						if (f<10)
 						{
-							case -1:
-							{
-								break;
-							}
-							case '1':  // +0.1Hz
-							{
-								f += 0.1;
-								sprintf(frequency, "***** frequency: %d Hz *****\r\n", f);
-								HAL_UART_Transmit(&huart2, (uint8_t*)frequency, strlen(frequency), 1000);
-								break;
-							}
-							case '2':  // -0.1Hz
-							{
-								f -= 0.1;
-								sprintf(frequency, "***** frequency: %d Hz *****\r\n", f);
-								HAL_UART_Transmit(&huart2, (uint8_t*)frequency, strlen(frequency), 1000);
-								break;
-							}
-							case '3':  // +1Hz
-							{
-								f += 1;
-								sprintf(frequency, "***** frequency: %d Hz *****\r\n", f);
-								HAL_UART_Transmit(&huart2, (uint8_t*)frequency, strlen(frequency), 1000);
-								break;
-							}
-							case '4':  // -1Hz
-							{
-								f -= 1;
-								sprintf(frequency, "***** frequency: %d Hz *****\r\n", f);
-								HAL_UART_Transmit(&huart2, (uint8_t*)frequency, strlen(frequency), 1000);
-								break;
-							}
-							case 'x':  // back
-							{
-								State = State_Menu0_Print;
-								break;
-							}
-							default:   // error
-							{
-								 char temp[] = "***** Please Press again *****\r\n";
-								 HAL_UART_Transmit(&huart2, (uint8_t*)temp, strlen(temp), 1000);
-								 State = State_Menu0_WaitInput;
-								 break;
-							}
+
+							f = 10;
 						}
+						sprintf(frequency, "***** frequency: %f Hz *****\r\n", f);
+						HAL_UART_Transmit(&huart2, (uint8_t*)frequency, strlen(frequency), 1000);
+						State = State_Menu0_Print;
 						break;
 					}
-					case '2': // V_high
+					case '2':  // -0.1Hz
 					{
-						char temp[] = "***** Mode 0: Sawtooth_V high *****\r\n"
-						"1: +0.1V\r\n ""2: -0.1V\r\n ""3: +1V\r\n ""4: -1V\r\n ""x: back\r\n \r\n";
-						HAL_UART_Transmit(&huart2, (uint8_t*)temp, strlen(temp), 1000);
-						switch(inputchar)
+						f -= 0.1;
+						if (f<0)
 						{
-							case -1:
-							{
-								break;
-							}
-							case '1':  // +0.1v
-							{
-								Vh += 0.1;
-								sprintf(V_high, "***** V high: %d v *****\r\n", Vh);
-								HAL_UART_Transmit(&huart2, (uint8_t*)V_high, strlen(V_high), 1000);
-								break;
-							}
-							case '2':  // -0.1v
-							{
-								Vh -= 0.1;
-								sprintf(V_high, "***** V high: %d v *****\r\n", Vh);
-								HAL_UART_Transmit(&huart2, (uint8_t*)V_high, strlen(V_high), 1000);
-								break;
-							}
-							case '3':  // +1v
-							{
-								Vh += 1;
-								sprintf(V_high, "***** V high: %d v *****\r\n", Vh);
-								HAL_UART_Transmit(&huart2, (uint8_t*)V_high, strlen(V_high), 1000);
-								break;
-							}
-							case '4':  // -1v
-							{
-								Vh -= 1;
-								sprintf(V_high, "***** V high: %d v *****\r\n", Vh);
-								HAL_UART_Transmit(&huart2, (uint8_t*)V_high, strlen(V_high), 1000);
-								break;
-							}
-							case 'x':  // back
-							{
-								State = State_Menu0_Print;
-								break;
-							}
-							default:   // error
-							{
-								 char temp[] = "***** Please Press again *****\r\n";
-								 HAL_UART_Transmit(&huart2, (uint8_t*)temp, strlen(temp), 1000);
-								 State = State_Menu0_WaitInput;
-								 break;
-							}
+							f = 0;
 						}
+						//1.2 = 12 10*hz
+						sprintf(frequency, "***** frequency: %f Hz *****\r\n", f);
+						HAL_UART_Transmit(&huart2, (uint8_t*)frequency, strlen(frequency), 1000);
+						State = State_Menu0_Print;
 						break;
 					}
-					case '3': // V_low
+					case '3': // V_high +0.1v
 					{
-						char temp[] = "***** Mode 0: Sawtooth_V high *****\r\n"
-						"1: +0.1V\r\n ""2: -0.1V\r\n ""3: +1V\r\n ""4: -1V\r\n ""x: back\r\n \r\n";
-						HAL_UART_Transmit(&huart2, (uint8_t*)temp, strlen(temp), 1000);
-						switch(inputchar)
+						Vh += 0.1;
+						if (Vh<3.3)
 						{
-							case -1:
-							{
-								break;
-							}
-							case '1':  // +0.1v
-							{
-								Vl += 0.1;
-								sprintf(V_low, "***** V high: %d v *****\r\n", Vl);
-								HAL_UART_Transmit(&huart2, (uint8_t*)V_low, strlen(V_low), 1000);
-								break;
-							}
-							case '2':  // -0.1v
-							{
-								Vl -= 0.1;
-								sprintf(V_low, "***** V high: %d v *****\r\n", Vl);
-								HAL_UART_Transmit(&huart2, (uint8_t*)V_low, strlen(V_low), 1000);
-								break;
-							}
-							case '3':  // +1v
-							{
-								Vl += 1;
-								sprintf(V_low, "***** V high: %d v *****\r\n", Vl);
-								HAL_UART_Transmit(&huart2, (uint8_t*)V_low, strlen(V_low), 1000);
-								break;
-							}
-							case '4':  // -1v
-							{
-								Vl -= 1;
-								sprintf(V_low, "***** V high: %d v *****\r\n", Vl);
-								HAL_UART_Transmit(&huart2, (uint8_t*)V_low, strlen(V_low), 1000);
-								break;
-							}
-							case 'x':  // back
-							{
-								State = State_Menu0_Print;
-								break;
-							}
-							default:   // error
-							{
-								 char temp[] = "***** Please Press again *****\r\n";
-								 HAL_UART_Transmit(&huart2, (uint8_t*)temp, strlen(temp), 1000);
-								 State = State_Menu0_WaitInput;
-								 break;
-							}
+							Vh = 3.3;
 						}
+						sprintf(V_high, "***** V high: %f v *****\r\n", Vh);
+						HAL_UART_Transmit(&huart2, (uint8_t*)V_high, strlen(V_high), 1000);
+						State = State_Menu0_Print;
 						break;
 					}
-					case '4': // Slope Up/Slope Down
+					case '4':  // V_high -0.1v
 					{
-						char temp[] = "***** Mode 0: Sawtooth_Slope Up/Slope Down *****\r\n "
-														"1: Slope Up/Slope Down\r\n "
-														"x: back\r\n \r\n";
-						HAL_UART_Transmit(&huart2, (uint8_t*)temp, strlen(temp), 1000);
-						switch(inputchar)
+						Vh -= 0.1;
+						if (Vh<0)
 						{
-							case -1:
-							{
-								break;
-							}
-							/////// toggle ////////
-//							case '1':  // +0.1v
-//							{
-//								Vl += 0.1;
-//								sprintf(V_low, "***** V high: %d v *****\r\n", Vl);
-//								HAL_UART_Transmit(&huart2, (uint8_t*)V_low, strlen(V_low), 1000);
-//								break;
-//							}
-							case 'x':  // back
-							{
-								State = State_Menu0_Print;
-								break;
-							}
-							default:   // error
-							{
-								 char temp[] = "***** Please Press again *****\r\n";
-								 HAL_UART_Transmit(&huart2, (uint8_t*)temp, strlen(temp), 1000);
-								 State = State_Menu0_WaitInput;
-								 break;
-							}
+							Vh = 0;
 						}
+						sprintf(V_high, "***** V high: %f v *****\r\n", Vh);
+						HAL_UART_Transmit(&huart2, (uint8_t*)V_high, strlen(V_high), 1000);
+						State = State_Menu0_Print;
+						break;
+					}
+					case '5': //  V_low +0.1v
+					{
+						Vl += 0.1;
+						if (Vl>3.3)
+						{
+							Vl = 3.3;
+						}
+						sprintf(V_low, "***** V low: %f v *****\r\n", Vl);
+						HAL_UART_Transmit(&huart2, (uint8_t*)V_low, strlen(V_low), 1000);
+						State = State_Menu0_Print;
+						break;
+					}
+					case '6':  // V_low -0.1v
+					{
+						Vl -= 0.1;
+						if (Vl<0)
+						{
+							Vl = 0;
+						}
+						sprintf(V_low, "***** V low: %f v *****\r\n", Vl);
+						HAL_UART_Transmit(&huart2, (uint8_t*)V_low, strlen(V_low), 1000);
+						State = State_Menu0_Print;
+						break;
+					}
+					case '7': // Slope Up = 0 /Slope Down = 1
+					{
+						if (Check_Slope == 0)
+						{
+							Check_Slope = 1;
+							break;
+						}
+						else
+						{
+							Check_Slope = 0;
+							break;
+						}
+						State = State_Menu0_Print;
 						break;
 					}
 					case 'x':  // back
@@ -440,12 +322,17 @@ int main(void)
 						 break;
 					}
 				}
+				break;
 			case State_Menu1_Print:
 			{
 				char temp[] = "***** Mode 1: Sine wave *****\r\n "
-						"1: frequency\r\n "
-						"2: V high\r\n "
-						"3: V low\r\n x: back\r\n \r\n";
+						"1: frequency +0.1 Hz\r\n "
+						"2: frequency -0.1 Hz\r\n "
+						"3: V high +0.1V\r\n "
+						"4: V low -0.1V\r\n "
+						"5: V high +0.1V\r\n "
+						"6: V low -0.1V\r\n "
+						"x: back\r\n \r\n";
 				HAL_UART_Transmit(&huart2, (uint8_t*)temp, strlen(temp), 1000);
 				State = State_Menu1_WaitInput;
 				break;
@@ -457,166 +344,76 @@ int main(void)
 					{
 						break;
 					}
-					case '1':  // frequency
+					case '1':  // +0.1Hz
 					{
-						char temp[] = "***** Mode 1: Sine wave_frequency *****\r\n "
-						"1: +0.1Hz\r\n ""2: -0.1Hz\r\n ""3: +1Hz\r\n ""4: -1Hz\r\n ""x: back\r\n \r\n";
-						HAL_UART_Transmit(&huart2, (uint8_t*)temp, strlen(temp), 1000);
-						switch(inputchar)
+						f += 0.1;
+						if (f>10)
 						{
-							case -1:
-							{
-								break;
-							}
-							case '1':  // +0.1Hz
-							{
-								f += 0.1;
-								sprintf(frequency, "***** frequency: %d Hz *****\r\n", f);
-								HAL_UART_Transmit(&huart2, (uint8_t*)frequency, strlen(frequency), 1000);
-								break;
-							}
-							case '2':  // -0.1Hz
-							{
-								f -= 0.1;
-								sprintf(frequency, "***** frequency: %d Hz *****\r\n", f);
-								HAL_UART_Transmit(&huart2, (uint8_t*)frequency, strlen(frequency), 1000);
-								break;
-							}
-							case '3':  // +1Hz
-							{
-								f += 1;
-								sprintf(frequency, "***** frequency: %d Hz *****\r\n", f);
-								HAL_UART_Transmit(&huart2, (uint8_t*)frequency, strlen(frequency), 1000);
-								break;
-							}
-							case '4':  // -1Hz
-							{
-								f -= 1;
-								sprintf(frequency, "***** frequency: %d Hz *****\r\n", f);
-								HAL_UART_Transmit(&huart2, (uint8_t*)frequency, strlen(frequency), 1000);
-								break;
-							}
-							case 'x':  // back
-							{
-								State = State_Menu1_Print;
-								break;
-							}
-							default:   // error
-							{
-								 char temp[] = "***** Please Press again *****\r\n";
-								 HAL_UART_Transmit(&huart2, (uint8_t*)temp, strlen(temp), 1000);
-								 State = State_Menu1_WaitInput;
-								 break;
-							}
+							f = 10;
 						}
+						sprintf(frequency, "***** frequency: %f Hz *****\r\n", f);
+						HAL_UART_Transmit(&huart2, (uint8_t*)frequency, strlen(frequency), 1000);
+						State = State_Menu1_Print;
 						break;
 					}
-					case '2': // V_high
+					case '2':  // -0.1Hz
 					{
-						char temp[] = "***** Mode 1: Sine wave_V high *****\r\n"
-						"1: +0.1V\r\n ""2: -0.1V\r\n ""3: +1V\r\n ""4: -1V\r\n ""x: back\r\n \r\n";
-						HAL_UART_Transmit(&huart2, (uint8_t*)temp, strlen(temp), 1000);
-						switch(inputchar)
+						f -= 0.1;
+						if (f<0)
 						{
-							case -1:
-							{
-								break;
-							}
-							case '1':  // +0.1v
-							{
-								Vh += 0.1;
-								sprintf(V_high, "***** V high: %d v *****\r\n", Vh);
-								HAL_UART_Transmit(&huart2, (uint8_t*)V_high, strlen(V_high), 1000);
-								break;
-							}
-							case '2':  // -0.1v
-							{
-								Vh -= 0.1;
-								sprintf(V_high, "***** V high: %d v *****\r\n", Vh);
-								HAL_UART_Transmit(&huart2, (uint8_t*)V_high, strlen(V_high), 1000);
-								break;
-							}
-							case '3':  // +1v
-							{
-								Vh += 1;
-								sprintf(V_high, "***** V high: %d v *****\r\n", Vh);
-								HAL_UART_Transmit(&huart2, (uint8_t*)V_high, strlen(V_high), 1000);
-								break;
-							}
-							case '4':  // -1v
-							{
-								Vh -= 1;
-								sprintf(V_high, "***** V high: %d v *****\r\n", Vh);
-								HAL_UART_Transmit(&huart2, (uint8_t*)V_high, strlen(V_high), 1000);
-								break;
-							}
-							case 'x':  // back
-							{
-								State = State_Menu1_Print;
-								break;
-							}
-							default:   // error
-							{
-								 char temp[] = "***** Please Press again *****\r\n";
-								 HAL_UART_Transmit(&huart2, (uint8_t*)temp, strlen(temp), 1000);
-								 State = State_Menu1_WaitInput;
-								 break;
-							}
+							f = 0;
 						}
+						sprintf(frequency, "***** frequency: %f Hz *****\r\n", f);
+						HAL_UART_Transmit(&huart2, (uint8_t*)frequency, strlen(frequency), 1000);
+						State = State_Menu1_Print;
 						break;
 					}
-					case '3': // V_low
+					case '3': // V_high +0.1v
 					{
-						char temp[] =  "***** Mode 1: Sine wave_V high *****\r\n"
-						"1: +0.1V\r\n ""2: -0.1V\r\n ""3: +1V\r\n ""4: -1V\r\n ""x: back\r\n \r\n";
-						HAL_UART_Transmit(&huart2, (uint8_t*)temp, strlen(temp), 1000);
-						switch(inputchar)
+						Vh += 0.1;
+						if (Vh>3.3)
 						{
-							case -1:
-							{
-								break;
-							}
-							case '1':  // +0.1v
-							{
-								Vl += 0.1;
-								sprintf(V_low, "***** V high: %d v *****\r\n", Vl);
-								HAL_UART_Transmit(&huart2, (uint8_t*)V_low, strlen(V_low), 1000);
-								break;
-							}
-							case '2':  // -0.1v
-							{
-								Vl -= 0.1;
-								sprintf(V_low, "***** V high: %d v *****\r\n", Vl);
-								HAL_UART_Transmit(&huart2, (uint8_t*)V_low, strlen(V_low), 1000);
-								break;
-							}
-							case '3':  // +1v
-							{
-								Vl += 1;
-								sprintf(V_low, "***** V high: %d v *****\r\n", Vl);
-								HAL_UART_Transmit(&huart2, (uint8_t*)V_low, strlen(V_low), 1000);
-								break;
-							}
-							case '4':  // -1v
-							{
-								Vl -= 1;
-								sprintf(V_low, "***** V high: %d v *****\r\n", Vl);
-								HAL_UART_Transmit(&huart2, (uint8_t*)V_low, strlen(V_low), 1000);
-								break;
-							}
-							case 'x':  // back
-							{
-								State = State_Menu1_Print;
-								break;
-							}
-							default:   // error
-							{
-								 char temp[] = "***** Please Press again *****\r\n";
-								 HAL_UART_Transmit(&huart2, (uint8_t*)temp, strlen(temp), 1000);
-								 State = State_Menu1_WaitInput;
-								 break;
-							}
+							Vh = 3.3;
 						}
+						sprintf(V_high, "***** V high: %f v *****\r\n", Vh);
+						HAL_UART_Transmit(&huart2, (uint8_t*)V_high, strlen(V_high), 1000);
+						State = State_Menu1_Print;
+						break;
+					}
+					case '4':  // V_high -0.1v
+					{
+						Vh -= 0.1;
+						if (Vh<0)
+						{
+							Vh = 0;
+						}
+						sprintf(V_high, "***** V high: %f v *****\r\n", Vh);
+						HAL_UART_Transmit(&huart2, (uint8_t*)V_high, strlen(V_high), 1000);
+						State = State_Menu1_Print;
+						break;
+					}
+					case '5': //  V_low +0.1v
+					{
+						Vl += 0.1;
+						if (Vl>3.3)
+						{
+							Vl = 3.3;
+						}
+						sprintf(V_low, "***** V low: %f v *****\r\n", Vl);
+						HAL_UART_Transmit(&huart2, (uint8_t*)V_low, strlen(V_low), 1000);
+						State = State_Menu1_Print;
+						break;
+					}
+					case '6':  // V_low -0.1v
+					{
+						Vl -= 0.1;
+						if (Vl<0)
+						{
+							Vl = 0;
+						}
+						sprintf(V_low, "***** V low: %f v *****\r\n", Vl);
+						HAL_UART_Transmit(&huart2, (uint8_t*)V_low, strlen(V_low), 1000);
+						State = State_Menu1_Print;
 						break;
 					}
 					case 'x':  // back
@@ -631,68 +428,113 @@ int main(void)
 						 State = State_Menu1_Print;
 						 break;
 					}
+
 				}
 				break;
 			case State_Menu2_Print:
 			{
 				char temp[] = "***** Mode 2: Square wave *****\r\n "
-										"1: frequency\r\n "
-										"2: V high\r\n "
-										"3: V low\r\n"
-										"4: Duty cycle\r\n "
+										"1: frequency +0.1 Hz\r\n "
+										"2: frequency -0.1 Hz\r\n "
+										"3: V high +0.1V\r\n "
+										"4: V low -0.1V\r\n "
+										"5: V high +0.1V\r\n "
+										"6: V low -0.1V\r\n "
+										"7: Duty +10%\r\n "
+										"8: Duty -10%\r\n "
 										"x: back\r\n \r\n";
 				HAL_UART_Transmit(&huart2, (uint8_t*)temp, strlen(temp), 1000);
 				State = State_Menu2_WaitInput;
 				break;
 			}
-
-
 			case State_Menu2_WaitInput:
-			{
 				switch (inputchar)
 				{
-					case -1 :   // no input
+					case -1:    // no input
 					{
 						break;
 					}
-					case '1':  // frequency
+					case '1':  // +0.1Hz
 					{
-						char temp[] = "***** Mode 2: Square wave_frequency *****\r\n "
-													 "1: +0.1Hz\r\n "
-													 "2: -0.1Hz\r\n "
-													 "3: +1Hz\r\n "
-													 "4: -1Hz\r\n "
-													 "x: back\r\n \r\n";
-						HAL_UART_Transmit(&huart2, (uint8_t*)temp, strlen(temp), 1000);
+						f += 0.1;
+						if (f>10)
+						{
+							f = 10;
+						}
+						sprintf(frequency, "***** frequency: %f Hz *****\r\n", f);
+						HAL_UART_Transmit(&huart2, (uint8_t*)frequency, strlen(frequency), 1000);
 						State = State_Menu2_Print;
 						break;
 					}
-					case '2':  // V high
+					case '2':  // -0.1Hz
 					{
-						char temp[] = "***** Mode 0: Sawtooth_V high *****\r\n"
-													 "1: +0.1V\r\n "
-													 "2: -0.1V\r\n "
-													 "3: +1V\r\n "
-													 "4: -1V\r\n "
-													 "x: back\r\n \r\n";
-						 HAL_UART_Transmit(&huart2, (uint8_t*)temp, strlen(temp), 1000);
+						f -= 0.1;
+						if (f<0)
+						{
+							f = 0;
+						}
+						sprintf(frequency, "***** frequency: %f Hz *****\r\n", f);
+						HAL_UART_Transmit(&huart2, (uint8_t*)frequency, strlen(frequency), 1000);
 						State = State_Menu2_Print;
 						break;
 					}
-					case '3':  //  V low
+					case '3': // V_high +0.1v
 					{
-						char temp[] = "***** Mode 0: Sawtooth_V low *****\r\n"
-													 "1: +0.1V\r\n "
-													 "2: -0.1V\r\n "
-													 "3: +1V\r\n "
-													 "4: -1V\r\n "
-													 "x: back\r\n \r\n";
-						 HAL_UART_Transmit(&huart2, (uint8_t*)temp, strlen(temp), 1000);
+						Vh += 0.1;
+						if (Vh>3.3)
+						{
+							Vh = 3.3;
+						}
+						sprintf(V_high, "***** V high: %f v *****\r\n", Vh);
+						HAL_UART_Transmit(&huart2, (uint8_t*)V_high, strlen(V_high), 1000);
 						State = State_Menu2_Print;
 						break;
 					}
-					case '4':  // Duty cycle
+					case '4':  // V_high -0.1v
 					{
+						Vh -= 0.1;
+						if (Vh<0)
+						{
+							Vh = 0;
+						}
+						sprintf(V_high, "***** V high: %f v *****\r\n", Vh);
+						HAL_UART_Transmit(&huart2, (uint8_t*)V_high, strlen(V_high), 1000);
+						State = State_Menu2_Print;
+						break;
+					}
+					case '5': //  V_low +0.1v
+					{
+						Vl += 0.1;
+						if (Vl>3.3)
+						{
+							Vl = 3.3;
+						}
+						sprintf(V_low, "***** V low: %f v *****\r\n", Vl);
+						HAL_UART_Transmit(&huart2, (uint8_t*)V_low, strlen(V_low), 1000);
+						State = State_Menu2_Print;
+						break;
+					}
+					case '6':  // V_low -0.1v
+					{
+						Vl -= 0.1;
+						if (Vl<0)
+						{
+							Vl = 0;
+						}
+						sprintf(V_low, "***** V low: %f v *****\r\n", Vl);
+						HAL_UART_Transmit(&huart2, (uint8_t*)V_low, strlen(V_low), 1000);
+						State = State_Menu2_Print;
+						break;
+					}
+					case '7':  // Duty +10%
+					{
+						Duty += 10;
+						State = State_Menu2_Print;
+						break;
+					}
+					case '8':  // Duty -10%
+					{
+						Duty -= 10;
 						State = State_Menu2_Print;
 						break;
 					}
@@ -705,50 +547,77 @@ int main(void)
 					{
 						 char temp[] = "***** Please Press again *****\r\n";
 						 HAL_UART_Transmit(&huart2, (uint8_t*)temp, strlen(temp), 1000);
-						 State = State_Menu1_Print;
+						 State = State_Menu2_Print;
 						 break;
 					}
 				}
 				break;
+		}
+
+		// sawtooth wave
+		if (State == 21)
+		{
+			if (micros() - timestamp > 1000) // L -> H
+			{
+				timestamp = micros();
+				if (Check_Slope == 0) // (Slope Up)
+				{
+					sawtooth = (((int)((Vh-Vl)*(4096.0/3.3)*f*(timestamp/1000000.0))) % ((int)((Vh-Vl)*(4096.0/3.3)))+(Vl*(4096.0/3.3))); // L -> H
+				}
+				else // (Slope Down)
+				{
+					sawtooth = (((int)((Vh-Vl)*(4096.0/3.3)*f*(timestamp/1000000.0))) % ((int) ((Vh-Vl)*(4096.0/3.3))) + (Vh*(4096.0/3.3)) +(Vl*(4096.0/3.3)));  //  H -> L
+				}
+				if (hspi3.State == HAL_SPI_STATE_READY && HAL_GPIO_ReadPin(SPI_SS_GPIO_Port, SPI_SS_Pin) == GPIO_PIN_SET)
+				{
+					MCP4922SetOutput(DACConfig, sawtooth);
+				}
 			}
 		}
 
+		// sine wave
+		if (State == 31)
+		{
+			if (micros() - timestamp > 1000)
+			{
+				timestamp = micros();
+				sinewave = ((Vh-Vl)*(4096.0/3.3)*sin(2.0*3.141*f*(timestamp/1000000)))+((Vh-Vl)*(4096.0/3.3)/2.0)+(Vl*(4096.0/3.3)); // A*sin(w*t)
+				if (hspi3.State == HAL_SPI_STATE_READY
+						&& HAL_GPIO_ReadPin(SPI_SS_GPIO_Port, SPI_SS_Pin) == GPIO_PIN_SET)
+				{
+					MCP4922SetOutput(DACConfig, sinewave);
+				}
+			}
+		}
 
-		//		// sawtooth wave
-		//		if (State == 21)
-		//		{
-		//			if () // L -> H
-		//			{
-		//				sawtooth = ((Vh-Vl)*f*t)%(Vh-Vl) ;
-		//			}
-		//			else if ()  // H -> L
-		//			{
-		//				sawtooth = (((Vh-Vl)*f*t)%(Vh-Vl))+Vh+Vl ;
-		//			}
-		//		}
-		//
-		//		// sine wave
-		//		if (State == 31)
-		//		{
-		//			sinewave = (Vh-Vl)*sin(2*pi*f*t)+((Vh-Vl)/2)+Vl; // A*sin(w*t)
-		//		}
-		//
-		//		// square wave
-		//		if (State == 31)
-		//		{
-		//			if (t < timestamp+(Duty*T))
-		//			{
-		//
-		//			}
-		//			else if (t < timestamp+T)
-		//			{
-		//
-		//			}
-		//			else
-		//			{
-		//
-		//			}
-		//		}
+		// square wave
+		if (State == 41)
+		{
+			if (Check == 0)
+			{
+				timestamp = micros();
+				Check = 1;
+			}
+			else if (micros() < timestamp + ((Duty/100) *(1000000.0/f)))
+			{
+				square = Vh*(4095/3.3);
+			}
+			else if (micros() < timestamp + (1000000.0/f))
+			{
+				square = Vl*(4096/3.3);
+			}
+			else
+			{
+				Check = 0;
+			}
+
+			if (hspi3.State == HAL_SPI_STATE_READY
+					&& HAL_GPIO_ReadPin(SPI_SS_GPIO_Port, SPI_SS_Pin) == GPIO_PIN_SET)
+			{
+				MCP4922SetOutput(DACConfig, square);
+			}
+
+		}
 
     /* USER CODE END WHILE */
 
@@ -764,7 +633,7 @@ int main(void)
 void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
-  RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+  RCC_ClkInitTypeDef RCC_ClkInitStruct ={0};
 
   /** Configure the main internal regulator output voltage
   */
@@ -1099,6 +968,21 @@ inline uint64_t micros()
 	return htim11.Instance->CNT + _micro;
 }
 
+void UARTRecieveAndResponsePolling()
+{
+	// create Buffer
+	char Recieve[32] = {0};
+
+	// start Receive in Polling mode
+	HAL_UART_Receive(&huart2, (uint8_t*)Recieve, 32, 1000);
+
+	// create Feedback Text
+	sprintf(TxDataBuffer, "Received:[%s]\r\n", Recieve);
+
+	// sent Text
+	HAL_UART_Transmit(&huart2, (uint8_t*)TxDataBuffer, strlen(TxDataBuffer), 1000);
+}
+
 
 int16_t UARTRecieveIT()
 {
@@ -1117,6 +1001,12 @@ int16_t UARTRecieveIT()
 		dataPos = (dataPos+1) %huart2.RxXferSize;
 	}
 	return data;
+}
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+	sprintf(TxDataBuffer, "Received:[%s]\r\n", RxDataBuffer);
+	HAL_UART_Transmit(&huart2, (uint8_t*)TxDataBuffer, strlen(TxDataBuffer), 1000);
 }
 
 /* USER CODE END 4 */
